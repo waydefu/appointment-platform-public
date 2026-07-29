@@ -7,6 +7,7 @@ deployment identifiers, and prior Git history.
 All test records are synthetic opaque identifiers or explicit private-field
 sentinels. They must not be replaced with realistic personal records.
 
-Third-party dependencies retain their own licenses. No license is granted for
-the repository's original source code; see the License section in
-[README.md](README.md).
+Third-party dependencies retain their own licenses. The repository's original
+source code remains all rights reserved. Public availability does not grant an
+open-source license or any permission beyond applicable platform terms and law;
+see the License section in [README.md](README.md).

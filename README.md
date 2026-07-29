@@ -1,5 +1,8 @@
 # Appointment Platform Reference
 
+[![Public verification](https://github.com/waydefu/appointment-platform-public/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/waydefu/appointment-platform-public/actions/workflows/verify.yml)
+[![CodeQL](https://github.com/waydefu/appointment-platform-public/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/waydefu/appointment-platform-public/actions/workflows/codeql.yml)
+
 This repository is a sanitized, code-only reference implementation for an
 appointment transaction boundary. Its Git history intentionally begins with one
 clean public snapshot.
@@ -49,6 +52,18 @@ corepack pnpm --filter @appointment-platform/api dev
 
 Only `GET /v1/health` is routed. This repository contains no database, calendar,
 identity-provider, deployment, or other cloud adapter.
+
+## Repository safeguards
+
+Normal changes to `main` are made through pull requests and must pass
+`Public verification` and `CodeQL`. The default-branch ruleset blocks
+force-pushes and deletion on that path; any administrative recovery bypass is
+not normal publication approval. GitHub secret scanning and push protection
+are enabled.
+
+Workflow actions are pinned to full commit SHAs and receive read-only default
+permissions. These controls reduce risk; they do not make this repository
+suitable for real personal, patient, staff, credential, or production data.
 
 ## Data policy
 

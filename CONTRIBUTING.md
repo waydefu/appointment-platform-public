@@ -12,5 +12,11 @@ Before opening a pull request:
    security review.
 4. Use a GitHub noreply commit address.
 5. Run `corepack pnpm verify`.
+6. Pin every GitHub Action to a full commit SHA and grant only the permissions
+   it requires.
+
+All changes target `main` through a pull request. `Public verification` and
+`CodeQL` must pass. Do not weaken, bypass, or rename required checks without
+repository-owner review.
 
 Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
