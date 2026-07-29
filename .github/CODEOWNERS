@@ -1,0 +1,7 @@
+* @waydefu
+/.github/ @waydefu
+/package.json @waydefu
+/pnpm-lock.yaml @waydefu
+/packages/domain/ @waydefu
+/apps/api/src/appointments/ @waydefu
+/SECURITY.md @waydefu

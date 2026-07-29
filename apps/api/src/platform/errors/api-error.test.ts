@@ -1,0 +1,135 @@
+import {
+  ApiErrorResponseSchema,
+  type ApiErrorCode
+} from '@appointment-platform/contracts';
+import { DomainError } from '@appointment-platform/domain';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import {
+  AuthenticationRequiredError,
+  AuthorizationDeniedError,
+  PolicyAcceptanceRequiredError,
+  RateLimitedError,
+  ServiceUnavailableError,
+  mapErrorToApiResponse
+} from './api-error.js';
+import { MissingVerifiedPatientError } from '../../appointments/appointment.application-service.js';
+const CORRELATION = 'corr_req_0001';
+describe('mapErrorToApiResponse', () => {
+  it('maps a Zod parse failure to 400 VALIDATION_FAILED', () => {
+    const zodError = z.string().safeParse(123).error;
+    const mapped = mapErrorToApiResponse(zodError, CORRELATION);
+    expect(mapped.status).toBe(400);
+    expect(mapped.body.error.code).toBe('VALIDATION_FAILED');
+  });
+  it.each<[string, ApiErrorCode, number]>([
+    ['APPOINTMENT_NOT_FOUND', 'NOT_FOUND', 404],
+    ['SLOT_UNAVAILABLE', 'CONFLICT', 409],
+    ['IDEMPOTENCY_KEY_REUSED', 'IDEMPOTENCY_MISMATCH', 409],
+    ['COMPLETION_NOT_AUTHORIZED', 'AUTHORIZATION_DENIED', 403],
+    ['INVALID_VALUE', 'VALIDATION_FAILED', 400],
+    ['PAYROLL_PERIOD_ALREADY_CLOSED', 'CONFLICT', 409],
+    ['SCHEDULE_VERSION_CONFLICT', 'CONFLICT', 409]
+  ])('maps DomainError %s to %s (%d)', (domainCode, apiCode, status) => {
+    const mapped = mapErrorToApiResponse(
+      new DomainError(domainCode as never, 'internal detail'),
+      CORRELATION
+    );
+    expect(mapped.body.error.code).toBe(apiCode);
+    expect(mapped.status).toBe(status);
+  });
+  it.each([
+    [new AuthenticationRequiredError(), 'AUTHENTICATION_REQUIRED', 401],
+    [new AuthorizationDeniedError(), 'AUTHORIZATION_DENIED', 403],
+    [new PolicyAcceptanceRequiredError(), 'POLICY_ACCEPTANCE_REQUIRED', 428],
+    [new RateLimitedError(), 'RATE_LIMITED', 429],
+    [new ServiceUnavailableError(), 'SERVICE_UNAVAILABLE', 503]
+  ] as const)('maps %s to its status', (error, apiCode, status) => {
+    const mapped = mapErrorToApiResponse(error, CORRELATION);
+    expect(mapped.body.error.code).toBe(apiCode);
+    expect(mapped.status).toBe(status);
+  });
+  it('maps an unknown error to 500 INTERNAL_ERROR', () => {
+    const mapped = mapErrorToApiResponse(new Error('boom'), CORRELATION);
+    expect(mapped.status).toBe(500);
+    expect(mapped.body.error.code).toBe('INTERNAL_ERROR');
+  });
+  it('maps a missing verified patient identity to 401, not 500', () => {
+    const mapped = mapErrorToApiResponse(
+      new MissingVerifiedPatientError(),
+      CORRELATION
+    );
+    expect(mapped.status).toBe(401);
+    expect(mapped.body.error.code).toBe('AUTHENTICATION_REQUIRED');
+  });
+  it('never leaks the domain message into the response body', () => {
+    const mapped = mapErrorToApiResponse(
+      new DomainError(
+        'APPOINTMENT_NOT_FOUND',
+        'PRIVATE_FIELD_SENTINEL_NAME appt_123'
+      ),
+      CORRELATION
+    );
+    expect(mapped.body.error.message).toBe('找不到指定的資料。');
+    expect(mapped.body.error.message).not.toContain(
+      'PRIVATE_FIELD_SENTINEL_NAME'
+    );
+    expect(mapped.body.error.message).not.toContain('appt_123');
+  });
+  it('replaces a non-opaque correlation id rather than echoing it', () => {
+    const mapped = mapErrorToApiResponse(
+      new Error('x'),
+      'user@example.invalid PRIVATE_FIELD_SENTINEL_PHONE'
+    );
+    expect(mapped.body.error.correlationId).toBe('unknown');
+  });
+  describe('Retry-After', () => {
+    it('tells a rate-limited caller how long to wait', () => {
+      const mapped = mapErrorToApiResponse(
+        new RateLimitedError(42.3),
+        CORRELATION
+      );
+      expect(mapped.status).toBe(429);
+      expect(mapped.headers['Retry-After']).toBe('43');
+    });
+    it('never invites an immediate retry', () => {
+      const mapped = mapErrorToApiResponse(
+        new RateLimitedError(0.2),
+        CORRELATION
+      );
+      expect(mapped.headers['Retry-After']).toBe('1');
+    });
+    it('applies to 503 as well, since it raises the same question', () => {
+      const mapped = mapErrorToApiResponse(
+        new ServiceUnavailableError(30),
+        CORRELATION
+      );
+      expect(mapped.status).toBe(503);
+      expect(mapped.headers['Retry-After']).toBe('30');
+    });
+    it('omits the header when the wait is unknown', () => {
+      expect(
+        mapErrorToApiResponse(new RateLimitedError(), CORRELATION).headers
+      ).toEqual({});
+    });
+    it('adds no headers to failures that are not about waiting', () => {
+      expect(
+        mapErrorToApiResponse(new AuthenticationRequiredError(), CORRELATION)
+          .headers
+      ).toEqual({});
+    });
+  });
+  it('always produces a body that satisfies the v1 error envelope', () => {
+    const errors: unknown[] = [
+      z.string().safeParse(1).error,
+      new DomainError('SLOT_UNAVAILABLE', 'x'),
+      new AuthenticationRequiredError(),
+      new RateLimitedError(),
+      new Error('x')
+    ];
+    for (const error of errors) {
+      const mapped = mapErrorToApiResponse(error, CORRELATION);
+      expect(ApiErrorResponseSchema.safeParse(mapped.body).success).toBe(true);
+    }
+  });
+});

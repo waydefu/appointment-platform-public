@@ -1,0 +1,33 @@
+{
+  "name": "appointment-platform-reference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sanitized reference implementation of an appointment platform.",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24.14.0 <25",
+    "pnpm": "11.9.0"
+  },
+  "scripts": {
+    "build": "corepack pnpm --recursive --if-present run build",
+    "test": "vitest run",
+    "check:format": "prettier --check .",
+    "format": "prettier --write .",
+    "check:lint": "eslint .",
+    "check:secrets": "node scripts/check-tracked-secrets.mjs",
+    "check:public-safety": "node scripts/check-public-safety.mjs",
+    "audit:prod": "corepack pnpm audit --prod --audit-level high",
+    "audit:all": "corepack pnpm audit --audit-level high",
+    "verify": "corepack pnpm run check:secrets && corepack pnpm run check:public-safety && corepack pnpm run check:format && corepack pnpm run build && corepack pnpm run check:lint && corepack pnpm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^3.0.0"
+  }
+}

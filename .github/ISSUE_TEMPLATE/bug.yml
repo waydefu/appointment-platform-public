@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible problem without sensitive data.
+title: '[Bug] '
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Use only synthetic data and public repository links.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide minimal steps using opaque identifiers.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-data confirmation
+      options:
+        - label: I included no personal data, credentials, private links, logs, or screenshots from a real system.
+          required: true
