@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
-const files = execFileSync('git', ['ls-files', '-z'], {
-  encoding: 'utf8'
-})
-  .split('\0')
-  .filter(Boolean);
+// This gate decides whether a secret reached version control, so it has to keep
+// working on a messy checkout. The decision logic is exported and touches no
+// filesystem, because a gate that throws is read as "the scan failed" rather
+// than "a secret was found", and a gate that reports false failures gets routed
+// around instead of fixed.
 
-const detectors = [
+export const detectors = [
   {
     name: 'private-key',
     pattern: new RegExp(
@@ -37,26 +39,76 @@ const detectors = [
   }
 ];
 
-const failures = [];
+// This file necessarily contains every pattern it looks for, so scanning it
+// would report itself on every run.
+export const SELF_PATH = 'scripts/check-tracked-secrets.mjs';
 
-for (const file of files) {
-  if (file === 'scripts/check-tracked-secrets.mjs') continue;
-  const buffer = await readFile(file);
-  if (buffer.includes(0)) continue;
-  const text = buffer.toString('utf8');
-
-  for (const detector of detectors) {
-    if (detector.pattern.test(text)) {
-      failures.push({ file, detector: detector.name });
-    }
-  }
+export function detectSecrets(text, detectorList = detectors) {
+  return detectorList
+    .filter((detector) => detector.pattern.test(text))
+    .map((detector) => detector.name);
 }
 
-if (failures.length > 0) {
-  for (const failure of failures) {
-    console.error(`${failure.file}: ${failure.detector}`);
+export function isBinary(buffer) {
+  return buffer.includes(0);
+}
+
+// `git ls-files` reads the index, so it lists files that are tracked but
+// already deleted in the working tree. Those have no content to scan, and
+// reading them throws ENOENT and takes the whole gate down. Skip them, and
+// report how many were skipped so they are never silently assumed clean.
+export function planScan(trackedFiles, exists) {
+  const scan = [];
+  const missing = [];
+  for (const file of trackedFiles) {
+    if (file === SELF_PATH) continue;
+    if (exists(file)) scan.push(file);
+    else missing.push(file);
   }
-  process.exitCode = 1;
-} else {
-  console.log(`Tracked-secret check passed for ${files.length} files.`);
+  return { scan, missing };
+}
+
+export function renderResult({ scannedCount, missing, failures }) {
+  if (failures.length > 0) {
+    return {
+      ok: false,
+      lines: failures.map((failure) => `${failure.file}: ${failure.detector}`)
+    };
+  }
+  const skipped =
+    missing.length > 0
+      ? `, skipped ${missing.length} deleted in the working tree (${missing.join(', ')})`
+      : '';
+  return {
+    ok: true,
+    lines: [`Tracked-secret check passed for ${scannedCount} files${skipped}.`]
+  };
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const trackedFiles = execFileSync('git', ['ls-files', '-z'], {
+    encoding: 'utf8'
+  })
+    .split('\0')
+    .filter(Boolean);
+
+  const { scan, missing } = planScan(trackedFiles, existsSync);
+  const failures = [];
+
+  for (const file of scan) {
+    const buffer = await readFile(file);
+    if (isBinary(buffer)) continue;
+    for (const detector of detectSecrets(buffer.toString('utf8'))) {
+      failures.push({ file, detector });
+    }
+  }
+
+  const result = renderResult({ scannedCount: scan.length, missing, failures });
+
+  if (result.ok) {
+    for (const line of result.lines) console.log(line);
+  } else {
+    for (const line of result.lines) console.error(line);
+    process.exitCode = 1;
+  }
 }
